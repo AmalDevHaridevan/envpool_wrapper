@@ -40,6 +40,7 @@ class MyEnv(EnvPoolProtocol, gym.Env):
 
 if __name__ == "__main__":
     # essential to wrap it in main, or else it will cause circular imports
+    # or rerunning the logic when imported in embedded envpool code
     EnvManager.register_env(MyEnv)
     CppWrapperGenerator.generate_envpool_wrap(MyEnv, verbose=True)
 
