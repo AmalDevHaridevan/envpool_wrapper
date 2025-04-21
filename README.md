@@ -1,11 +1,13 @@
 # envpool_wrapper
-Envpool wrapper for Envs written in Python. This module defines a protocol, allowing to wrap aribitrary environments written in Python to be executed using envpool API.
+Envpool wrapper for Envs written in Python. This module defines a protocol, allowing to wrap aribitrary environments written in Python to be executed using ```envpool``` API. 
+Wrapped environments can be used just like ```gym``` envs, or in a similar manner to ```envpool``` envs. 
+This wrapping makes your environment comaptible with ```torchrl``` ```MultiThreadedEnvWrapper```. https://pytorch.org/rl/main/reference/generated/torchrl.envs.MultiThreadedEnv.html
 
 # Envpool
 To learn about Envpool, see https://github.com/sail-sg/envpool
 
 # Benefits of Envpool
-Envpool allows fast multithreaded execution of environments. This is typically faster than parallelization using multiple processes, and allows to fully utilize cpu resources.
+Envpool allows fast multithreaded execution of environments. This is typically faster than parallelization using multiple processes, and allows to fully utilize cpu resources. Envpool allows to massively parllelize Deep Reinforcement Learning training.
 
 # Benchmark
 TODO
