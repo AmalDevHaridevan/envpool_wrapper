@@ -22,7 +22,9 @@ def run_gym(num_envs, total_step, async_):
                 done = env.step(action)[2]
         else:
             env.step(action)
-    print(f"FPS = { total_step * num_envs / (time.time() - t):.2f}")
+    fps = total_step * num_envs / (time.time() - t)
+    print(f"FPS = { fps:.2f}")
+    return fps
 
 def run_envpool(num_envs, total_step, async_):
     task_id="MyEnv_wrap"
@@ -35,9 +37,10 @@ def run_envpool(num_envs, total_step, async_):
         info = env.recv()[-1]
         env.step(action, info["env_id"])
     duration = time.time() - t
-    fps = args.total_step * args.batch_size / duration 
+    fps = total_step * num_envs / duration 
     print(f"Duration = {duration:.2f}s")
     print(f"EnvPool FPS = {fps:.2f}")
+    return fps
     
 if __name__ == "__main__":
     import argparse
@@ -46,5 +49,9 @@ if __name__ == "__main__":
     parser.add_argument("--async_env", help="async mode or not", action="store_true", required=True)
     parser.add_argument("--max_iters", help="maximum number of steps to test", type=int, required=True)
     args = parser.parse_args()
-    run_gym(args.n_envs, args.max_iters, args.async_env)
-    run_envpool(args.n_envs, args.max_iters, args.async_env)
+    gym_fps = run_gym(args.n_envs, args.max_iters, args.async_env)
+    envpool_fps = run_envpool(args.n_envs, args.max_iters, args.async_env)
+    print("~"*50)
+    print("Gym Vec env fps: ", gym_fps)
+    print("Envpool wrapped fps: ", envpool_fps)
+    print("~"*50)
