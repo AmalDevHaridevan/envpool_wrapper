@@ -1,0 +1,12 @@
+#define ACTION_SPACE_DIM 1
+#define OBSERVATION_SPACE_DIM 1
+#define MODULE_NAME None_py
+#define OBSERVATION_SPACE_LOW {-1.0}
+#define OBSERVATION_SPACE_HIGH {1.0}
+#define ACTION_SPACE_LOW {-1.0}
+#define ACTION_SPACE_HIGH {1.0}
+#define RUNTIME_MODULE "None"
+#define RUNTIME_MODULE_PATH "None"
+#define PROTOCOL_CLS "None"
+#define SPEC_CLS None_pySpec
+#define POOL_CLS None_pyPool
