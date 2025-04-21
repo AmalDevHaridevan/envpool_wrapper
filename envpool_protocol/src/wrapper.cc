@@ -27,6 +27,7 @@
 #include "envpool/core/py_envpool.h"
 #include <pybind11/embed.h>
 
+
 namespace wrapper{
 
 class SPEC_CLS {
@@ -56,25 +57,34 @@ class SPEC_CLS {
 // using WrappedEnvSpec = EnvSpec<SPEC_CLS>;
 
 
+struct GILScopedEnsure {
+    PyGILState_STATE state;
+    GILScopedEnsure() { state = PyGILState_Ensure(); }
+    ~GILScopedEnsure() { PyGILState_Release(state); }
+};
+struct MaybeGil {
+    bool acquired = false;
+    PyGILState_STATE state;
+
+    MaybeGil() {
+        if (!PyGILState_Check()) {
+            state = PyGILState_Ensure();
+            acquired = true;
+        }
+    }
+
+    ~MaybeGil() {
+        if (acquired) {
+            PyGILState_Release(state);
+        }
+    }
+};
 
 class MODULE_NAME : public Env<EnvSpec<SPEC_CLS>>{
     public:
+        // static py::scoped_interpreter guard{};
         MODULE_NAME(const Spec& spec, int envid): Env<EnvSpec<SPEC_CLS>>(spec, envid) {
-            // see https://github.com/pybind/pybind11/pull/1211
-            // we need to release first, and then acquire from a clean state
-            // to prevent deadlocks
-            pybind11::gil_scoped_release release;
-            pybind11::gil_scoped_acquire acquire;
-            try {
-                py::module_ sys = py::module_::import("sys");
-                sys.attr("path").attr("append")(RUNTIME_MODULE_PATH);
-                mod = py::module::import(RUNTIME_MODULE);
-                env_cls = mod.attr(PROTOCOL_CLS)(envid);
-                has_class = true;
-            } catch (const std::exception& e) {
-                std::cout<<e.what()<<std::endl;
-                has_class = false;
-            }
+            this->envid = envid;
         };
 
         void WriteState(float reward, const std::vector<float>& obs){
@@ -87,9 +97,24 @@ class MODULE_NAME : public Env<EnvSpec<SPEC_CLS>>{
         }
 
         void Reset() override { 
-            
-            // PyGILState_STATE gstate = PyGILState_Ensure();
-            // py::gil_scoped_acquire acquire;
+
+            if (! has_class){
+               
+                try {
+                  {
+                    py::gil_scoped_acquire gil;
+                    py::module_ sys = py::module_::import("sys");
+                    sys.attr("path").attr("append")(RUNTIME_MODULE_PATH);
+                    mod = py::module::import(RUNTIME_MODULE);
+                    env_cls = mod.attr(PROTOCOL_CLS)(envid);
+                    has_class = true;
+                  }
+            } catch (const std::exception& e) {
+                std::cout<<e.what()<<std::endl;
+                has_class = false;
+            }
+            }
+
             float reward ;
             std::vector<float> obs(OBSERVATION_SPACE_DIM, 0.0);
             if (! has_class){
@@ -110,7 +135,6 @@ class MODULE_NAME : public Env<EnvSpec<SPEC_CLS>>{
             } catch (const std::exception& e) {
                 std::cout<<e.what()<<std::endl;
             }
-            // PyGILState_Release(gstate);
             WriteState(reward, obs);
                     
         }
@@ -149,8 +173,10 @@ class MODULE_NAME : public Env<EnvSpec<SPEC_CLS>>{
      private:
         py::module_ mod;
         py::object env_cls;
-        bool  done;
+        // to ensure Reset is called for initing
+        bool  done = true;
         bool has_class;
+        int envid;
 };
 
 

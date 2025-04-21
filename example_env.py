@@ -4,6 +4,7 @@ from envpool_protocol.manager import EnvManager, CppWrapperGenerator
 import gym
 
 class MyEnv(EnvPoolProtocol, gym.Env):
+    
     def __init__(self, envid):
         super().__init__()
         self.observation_space = gym.spaces.Box(low=-1.0, high=1.0, shape=(3,))
@@ -25,9 +26,28 @@ class MyEnv(EnvPoolProtocol, gym.Env):
     
     def _done_envpool(self):
         return False
+    
+    """Create wrappers for gym api, for benchmarking"""
+    def step(self, act):
+        self._step_envpool(act)
+        obs = self._make_obs_envpool()
+        done = self._done_envpool()
+        reward = self._reward_envpool()
+        return obs, reward, done, done, {}
+        
+    def reset(self, *args):
+        self._reset_envpool()
+        obs = self._make_obs_envpool()
+        return obs, {}
 
+# add registration for gym
+gym.envs.register(
+    id='MyEnv',
+    entry_point='example_env:MyEnv',
+    max_episode_steps=2000,
+)
+    
 if __name__ == "__main__":
     # essential to wrap it in main, or else it will cause circular imports
     EnvManager.register_env(MyEnv)
     CppWrapperGenerator.generate_envpool_wrap(MyEnv)
-    # breakpoint()
