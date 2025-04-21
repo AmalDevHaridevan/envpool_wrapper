@@ -55,3 +55,6 @@ import numpy as np
 act= np.zeros((1,1)) +1
 env.step(act)
 ```
+# Requirements
+Currently you need to have ```numpy``` major version to be less than 2. 
+```Python``` major shall be less than ```3.11``` (non inclusive)
