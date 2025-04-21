@@ -17,25 +17,40 @@ import gym
 
 class MyEnv(EnvPoolProtocol, gym.Env):
     def __init__(self, envid):
+        # init should only take a single argument , the envid
+        # any other definitions will throw error, and cannot be registered
+        # this is to keep the protocol simple
         super().__init__()
         self.observation_space = gym.spaces.Box(low=-1.0, high=1.0, shape=(3,))
         self.action_space = gym.spaces.Box(low=-1.0, high=1.0, shape=(1,))
     
     def _step_envpool(self, act):
+        # do state transitions, etc...
+        # store it in self if needed for later reference
+        # should return nothing
         print("got act ", act)
     
     def _reward_envpool(self):
+        # this is called after _make_obs_envpool
+        # returns a scalar
         return 2.0
     
     def _reset_envpool(self):
+        # reset internal sim state or external interface states
+        # should return nothing
         ...
     
     def _make_obs_envpool(self):
+        # this is called after _step_envpool and _reset_envpool
+        # you should generate any states from internal simulation or
+        # external interfaces, and store for future reference
+        # returns numpy array
         obs = self.observation_space.sample()
         print("sending obs: ", obs)
         return obs 
     
     def _done_envpool(self):
+        # return if the done | truncated condition has reached
         return False
 
 if __name__ == "__main__":
