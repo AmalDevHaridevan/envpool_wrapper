@@ -14,8 +14,8 @@
 
 from envpool_protocol.envpool_protocol import EnvPoolProtocol
 import sys
-if sys.version_info.minor > 10:
-    raise RuntimeError("Python version >= 3.11 is not supported")
+if sys.version_info.minor > 12:
+    raise RuntimeError("Python version > 3.12 is not supported")
 import inspect
 import gym
 import os
@@ -122,7 +122,7 @@ class CppWrapperGenerator:
             return
         def_file = os.path.join(build_dir, "envpool_protocol", "include","definitions.hh")
         CppWrapperGenerator.write_defs(defs=defs, def_file=def_file)
-        cmake_config_cmd = f"cmake -S {build_dir}/envpool_protocol -B {build_dir}/build -DCMAKE_INSTALL_PREFIX:STRING=\{install_dir}"
+        cmake_config_cmd = f"cmake -S {build_dir}/envpool_protocol -B {build_dir}/build -DCMAKE_INSTALL_PREFIX:STRING={install_dir}"
         cmake_cmd = f"cmake --build {build_dir}/build --target install "
         try:
             subprocess.check_output(cmake_config_cmd.split(" "))
@@ -134,7 +134,7 @@ class CppWrapperGenerator:
         except (subprocess.CalledProcessError):
             print(f"could not finish build process for wrapper, wrapping failed")
             return
-        print("")
+        print(f"{defs.get('MODULE_NAME')} was sucessfully built")
         
     def write_defs(defs, def_file):
         with open(def_file, "w") as file:

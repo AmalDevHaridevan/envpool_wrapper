@@ -29,7 +29,6 @@ __all__ = []
 base_dir, _ = os.path.split(__file__)
 libs = glob.glob(f"{base_dir}/*cpython*.so")
 for lib in libs:
-    print("initing lib ", lib)
     modname = os.path.split(lib)[1].split(".")[0]
     module = importlib.import_module(f"envpool_wrap.env_libs.{modname}")
     envspec, envpool = getattr(module, f"_{modname}Spec"), getattr(module, f"_{modname}Pool")

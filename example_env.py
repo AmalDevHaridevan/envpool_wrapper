@@ -46,8 +46,17 @@ gym.envs.register(
     entry_point='example_env:MyEnv',
     max_episode_steps=2000,
 )
-    
+
+class MyEnv2(MyEnv):...
+
 if __name__ == "__main__":
     # essential to wrap it in main, or else it will cause circular imports
+    # NOTE: All class definitions shall be outside main
     EnvManager.register_env(MyEnv)
-    CppWrapperGenerator.generate_envpool_wrap(MyEnv)
+    CppWrapperGenerator.generate_envpool_wrap(MyEnv, verbose=False)
+    CppWrapperGenerator.generate_envpool_wrap(MyEnv2, verbose=False)
+    # the lines below will run with no errors, but during env creation it will cause issues
+    # because embedded interpreter won't be able to find class def for MyEnv3
+    # NOTE: Below is an example of invalid usage
+    class MyEnv3:...
+    CppWrapperGenerator.generate_envpool_wrap(MyEnv3, verbose=False)
