@@ -35,7 +35,7 @@ def run_envpool(num_envs, total_step, async_):
     t = time.time()
     for _ in tqdm.trange(total_step):
         info = env.recv()[-1]
-        env.step(action, info["env_id"])
+        env.send(action, info["env_id"])
     duration = time.time() - t
     fps = total_step * num_envs / duration 
     print(f"Duration = {duration:.2f}s")
