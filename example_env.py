@@ -58,5 +58,5 @@ if __name__ == "__main__":
     # the lines below will run with no errors, but during env creation it will cause issues
     # because embedded interpreter won't be able to find class def for MyEnv3
     # NOTE: Below is an example of invalid usage
-    class MyEnv3:...
+    class MyEnv3(MyEnv):...
     CppWrapperGenerator.generate_envpool_wrap(MyEnv3, verbose=False)

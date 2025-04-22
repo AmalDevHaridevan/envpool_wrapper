@@ -26,7 +26,7 @@ RUN apt-get install libeigen3-dev cmake python3-pybind11 -y
 RUN git clone https://github.com/google/glog.git /tmp/glog
 RUN cmake -S /tmp/glog -B /tmp/build -G "Unix Makefiles"
 RUN cmake --build /tmp/build --target install --parallel 10
-RUN git clone https://github.com/AmalDevHaridevan/envpool_wrapper.git /root/envpool_wrapper
+RUN git clone https://github.com/AmalDevHaridevan/envpool_wrapper.git 
 WORKDIR /root/envpool_wrapper
 RUN python3.11 example_env.py
 RUN python3.11 benchmark.py --n_envs 100 --async --max_iters 1000 > /tmp/results.txt
