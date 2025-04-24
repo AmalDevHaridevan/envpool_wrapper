@@ -10,16 +10,7 @@ To learn about Envpool, see https://github.com/sail-sg/envpool
 Envpool allows fast multithreaded execution of environments. This is typically faster than parallelization using multiple processes, and allows to fully utilize cpu resources. Envpool allows to massively parllelize Deep Reinforcement Learning training.
 
 # Benchmark
-To run benchmarking to compare ```gym``` vec env and ```envpool_wrap``` env. The following results were obtained from a 16 core AMD Ryzen 9 7940HS gaming laptop:
-```bash
-python benchmark.py --n_envs 100 --max_iters 1000 --async
-```
-```bash
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Gym Vec env fps:  5745.30010229975
-Envpool wrapped fps:  305792.65203041374
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-```
+TODO
 # Minimal Example
 ```python
 from envpool_protocol.envpool_protocol import EnvPoolProtocol
