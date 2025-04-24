@@ -202,17 +202,20 @@ void ToArray(const std::vector<py::array>& py_arrs,
  * Templated subclass of EnvPool,
  * to be overrided by the real EnvPool.
  */
+
+
 template <typename EnvPool>
 class PyEnvPool : public EnvPool {
  public:
+  
   using PySpec = PyEnvSpec<typename EnvPool::Spec>;
-
   PySpec py_spec;
   static std::vector<std::string> py_state_keys;
   static std::vector<std::string> py_action_keys;
 
   explicit PyEnvPool(const PySpec& py_spec)
-      : EnvPool(py_spec), py_spec(py_spec) {}
+      : EnvPool(py_spec), py_spec(py_spec) {     
+      }
 
   /**
    * get xla functions
@@ -241,10 +244,13 @@ class PyEnvPool : public EnvPool {
    * py api
    */
   void PySend(const std::vector<py::array>& action) {
+    // auto r = action.unchecked<float, 1>();  // for 1D arrays — use <2> for 2D, etc
+    
     std::vector<Array> arr;
     arr.reserve(action.size());
     ToArray(action, py_spec.action_spec, &arr);
-    py::gil_scoped_release release;
+    // py::gil_scoped_release release;
+    sub_interps::enable_threads_scope t;
     EnvPool::Send(arr);  // delegate to the c++ api
   }
 
@@ -254,7 +260,8 @@ class PyEnvPool : public EnvPool {
   std::vector<py::array> PyRecv() {
     std::vector<Array> arr;
     {
-      py::gil_scoped_release release;
+      // py::gil_scoped_release release;
+      sub_interps::enable_threads_scope t;
       arr = EnvPool::Recv();
       DCHECK_EQ(arr.size(), std::tuple_size_v<typename EnvPool::State::Keys>);
     }
@@ -270,7 +277,21 @@ class PyEnvPool : public EnvPool {
   void PyReset(const py::array& env_ids) {
     // PyArray arr = PyArray::From<int>(env_ids);
     auto arr = NumpyToArrayIncRef<int>(env_ids);
-    py::gil_scoped_release release;
+    // py::gil_scoped_release release;
+    sub_interps::enable_threads_scope t;
+//     {
+//     sub_interps::sub_interpreter::thread_scope scope(sub_interps_.at(0)->interp());
+//     std::string code = R"PY(
+
+// from __future__ import print_function
+// import sys
+
+// print("TNAME: sys.xxx={}".format(getattr(sys, 'xxx', 'attribute not set')))
+
+//     )PY";
+//     PyRun_SimpleString(code.c_str());
+//     }
+
     EnvPool::Reset(arr);
   }
 };
@@ -308,6 +329,9 @@ py::object abc_meta = py::module::import("abc").attr("ABCMeta");
       .def("_reset", &ENVPOOL::PyReset)                              \
       .def_readonly_static("_state_keys", &ENVPOOL::py_state_keys)   \
       .def_readonly_static("_action_keys", &ENVPOOL::py_action_keys) \
-      .def("_xla", &ENVPOOL::Xla);
+      .def("_xla", &ENVPOOL::Xla); \
+      // std::unique_ptr<sub_interps::initialize> ENVPOOL::interp_initializer = nullptr;\
+      // std::unique_ptr<sub_interps::enable_threads_scope> ENVPOOL::thread_scope_enabler = nullptr;\
+      // std::vector<std::shared_ptr<sub_interps::sub_interpreter>> ENVPOOL::sub_interps_ = std::vector<std::shared_ptr<sub_interps::sub_interpreter>>();
 
 #endif  // ENVPOOL_CORE_PY_ENVPOOL_H_

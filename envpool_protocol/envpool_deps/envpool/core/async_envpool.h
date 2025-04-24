@@ -30,6 +30,10 @@
 #include "envpool/core/envpool.h"
 #include "envpool/core/spec.h"
 #include "envpool/core/state_buffer_queue.h"
+#include <iostream>
+#include "sub_interps.hh"
+#include <numpy/arrayobject.h>
+#include "_internal_defs.hh"
 /**
  * Async EnvPool
  *
@@ -85,7 +89,12 @@ class AsyncEnvPool : public EnvPool<typename Env::Spec> {
   using Action = typename Env::Action;
   using State = typename Env::State;
   using ActionSlice = typename ActionBufferQueue::ActionSlice;
-
+  // sub interpreters
+  inline static std::unique_ptr<sub_interps::initialize> interp_initializer{nullptr};
+  inline static std::unique_ptr<sub_interps::enable_threads_scope> thread_scope_enabler{nullptr};
+  inline static std::vector<std::shared_ptr<sub_interps::sub_interpreter>> sub_interps_;
+  static int import_numpy_(){import_array(); };
+  // sub interpreters
   explicit AsyncEnvPool(const Spec& spec)
       : EnvPool<Spec>(spec),
         num_envs_(spec.config["num_envs"_]),
@@ -101,12 +110,35 @@ class AsyncEnvPool : public EnvPool<typename Env::Spec> {
             batch_, num_envs_, max_num_players_,
             spec.state_spec.template AllValues<ShapeSpec>())),
         envs_(num_envs_) {
+
+    import_numpy_();
+    for (int i= 0; i<num_envs_;++i){
+          sub_interps_.push_back(std::make_shared<sub_interps::sub_interpreter>());
+    }
+    // obtain a copy of module to distribute to each env since random libs are unique to 1 per proc
+    PyObject *sys_mod  = PyImport_ImportModule("sys");
+    if (!sys_mod) { PyErr_Print(); return; }
+    PyObject *path     = PyObject_GetAttrString(sys_mod, "path");
+    PyObject *pyPath   = PyUnicode_FromString(RUNTIME_MODULE_PATH);
+    if (!path || !pyPath) { PyErr_Print(); return; }
+
+    if (PyList_Append(path, pyPath) != 0) {
+        PyErr_Print();
+        return;
+    }
+    Py_DECREF(pyPath);
+    Py_DECREF(path);
+    Py_DECREF(sys_mod);
+
+    // 3) Import your module
+    PyObject* mod = PyImport_ImportModule(RUNTIME_MODULE);
+
     std::size_t processor_count = std::thread::hardware_concurrency();
     ThreadPool init_pool(std::min(processor_count, num_envs_));
     std::vector<std::future<void>> result;
     for (std::size_t i = 0; i < num_envs_; ++i) {
       result.emplace_back(init_pool.enqueue(
-          [i, spec, this] { envs_[i].reset(new Env(spec, i)); }));
+          [i, spec, mod, this] { envs_[i].reset(new Env(spec, i, sub_interps_.at(i), mod)); }));
     }
     for (auto& f : result) {
       f.get();
@@ -123,7 +155,7 @@ class AsyncEnvPool : public EnvPool<typename Env::Spec> {
           }
           int env_id = raw_action.env_id;
           int order = raw_action.order;
-          bool reset = raw_action.force_reset || envs_[env_id]->IsDone();
+          bool reset = raw_action.force_reset || envs_[env_id]->IsDone(); 
           envs_[env_id]->EnvStep(state_buffer_queue_.get(), order, reset);
         }
       });
@@ -155,10 +187,11 @@ class AsyncEnvPool : public EnvPool<typename Env::Spec> {
   }
 
   void Send(const Action& action) {
+    
     SendImpl(action.template AllValues<Array>());
   }
-  void Send(const std::vector<Array>& action) override { SendImpl(action); }
-  void Send(std::vector<Array>&& action) override { SendImpl(action); }
+  void Send(const std::vector<Array>& action) override {  SendImpl(action); }
+  void Send(std::vector<Array>&& action) override {  SendImpl(action); }
 
   std::vector<Array> Recv() override {
     int additional_wait = 0;

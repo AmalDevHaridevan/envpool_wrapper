@@ -61,13 +61,26 @@ class SPEC_CLS {
 
 class MODULE_NAME : public Env<EnvSpec<SPEC_CLS>>{
     public:
-        MODULE_NAME(const Spec& spec, int envid, std::shared_ptr<sub_interps::sub_interpreter> interp_,
-        PyObject *mod): Env<EnvSpec<SPEC_CLS>>(spec, envid) {
-          // no python stuff, here or else we will get deadlocks
-          this->envid = envid;
-          interp = interp_;
-          this->mod = mod;
+        static std::unique_ptr<sub_interps::initialize> interp_initializer;
+        static std::unique_ptr<sub_interps::enable_threads_scope> thread_scope_enabler;
+        static std::vector<std::shared_ptr<sub_interps::sub_interpreter>> sub_interps_;
 
+        static int initialize_static_members(){
+          // initialize main interpreter
+          interp_initializer = std::make_unique<sub_interps::initialize>();
+          // sub_interps::sub_interpreter::thread_scope scope(interp->interp());
+          import_array(); 
+          for (int i= 0; i<MAX_ENVS;++i){
+            sub_interps_.push_back(std::make_shared<sub_interps::sub_interpreter>());
+          }
+          // interp_ = std::make_unique<sub_interps::sub_interpreter>();
+          
+          
+          
+        };
+        MODULE_NAME(const Spec& spec, int envid): Env<EnvSpec<SPEC_CLS>>(spec, envid) {
+          // no python stuff, here or else we will get deadlocks
+            this->envid = envid;
         };
 
         void WriteState(float reward, const std::vector<float>& obs){
@@ -82,51 +95,72 @@ class MODULE_NAME : public Env<EnvSpec<SPEC_CLS>>{
 
         void Reset() override { 
 
-            // if (! has_class){
-            //   // python stuff goes here               
-            //     try {
-            //       {
-            //         // if (!interp_initializer){
-            //         //   // initialize main interpreter
-            //         //   // interp_initializer = std::make_unique<sub_interps::initialize>();
-            //         //   // thread_scope_enabler = std::make_unique<sub_interps::enable_threads_scope>();
-            //         //   // import_array(); 
-            //         //   // initialize_static_members();
-            //         //   std::cout<<"initialziing inyter[p]"<<std::endl;
-            //         //   interp = sub_interps_.at(envid);
-            //         //   has_class = true;
-            //         // }
-            //         // if (!interp){
+            if (! has_class){
+              // python stuff goes here               
+                try {
+                  {
+                    if (!interp_initializer){
+                      // initialize main interpreter
+                      // interp_initializer = std::make_unique<sub_interps::initialize>();
+                      // thread_scope_enabler = std::make_unique<sub_interps::enable_threads_scope>();
+                      // import_array(); 
+                      initialize_static_members();
+                      std::cout<<"initialziing inyter[p]"<<std::endl;
+                      interp = sub_interps_.at(envid);
+                      has_class = true;
+                    }
+                    // if (!interp){
                       
-            //         //   interp = std::make_unique<sub_interps::sub_interpreter>();
-            //         // }
-            //       }
-            // } catch (const std::exception& e) {
-            //     std::cout<<e.what()<<std::endl;
-            //     has_class = false;
-            // }
-            // }
+                    //   interp = std::make_unique<sub_interps::sub_interpreter>();
+                    // }
+                  }
+            } catch (const std::exception& e) {
+                std::cout<<e.what()<<std::endl;
+                has_class = false;
+            }
+            }
 
-            // std::thread t(&wrapper::MyEnv_wrap::Reset_t, this);
-            // // maybe detach, but may cause threads to pil up
-            // t.join();
-            Reset_t();
+            std::thread t(&wrapper::MyEnv_wrap::Reset_t, this);
+            // maybe detach, but may cause threads to pil up
+            t.join();
                     
         }
 
         private:
         void Reset_t(){
-          // check for mod init
+          // runs Reset in async
+          // Do not call this directly
           if (! has_class){
               // python stuff goes here
               if (!interp){
-                std::cout<<"sub-interp was not properly initialized..This env will do nothing"<<std::endl;
+                std::cout<<"sub-interp was not initialzied..This function call will do nothing"<<std::endl;
                 return;
               }               
                 try {
                   {
+                    // swap threadstate
+                    sub_interps::enable_threads_scope t{};
                     sub_interps::sub_interpreter::thread_scope scope(interp->interp());
-                    
+                    // py::module_ sys = py::module_::import("sys");
+                    // sys.attr("path").attr("append")(RUNTIME_MODULE_PATH);
+                    // mod = py::module::import(RUNTIME_MODULE);
+                    // env_cls = mod.attr(PROTOCOL_CLS)(envid);
+                    PyObject *sys_mod  = PyImport_ImportModule("sys");
+                    if (!sys_mod) { PyErr_Print(); return; }
+                    PyObject *path     = PyObject_GetAttrString(sys_mod, "path");
+                    PyObject *pyPath   = PyUnicode_FromString(RUNTIME_MODULE_PATH);
+                    if (!path || !pyPath) { PyErr_Print(); return; }
+
+                    if (PyList_Append(path, pyPath) != 0) {
+                        PyErr_Print();
+                        return;
+                    }
+                    Py_DECREF(pyPath);
+                    Py_DECREF(path);
+                    Py_DECREF(sys_mod);
+
+                    // 3) Import your module
+                    PyObject *mod = PyImport_ImportModule(RUNTIME_MODULE);
                     if (!mod) {
                         PyErr_Print();
                         std::cerr << "Failed to import module " << RUNTIME_MODULE << "\n";
@@ -134,8 +168,8 @@ class MODULE_NAME : public Env<EnvSpec<SPEC_CLS>>{
                     }
 
                     // 4) Get your class
-                    PyObject* env_cls = PyObject_GetAttrString(mod, PROTOCOL_CLS);
-                    if (!env_cls || !PyCallable_Check(env_cls)) {
+                    PyObject *cls = PyObject_GetAttrString(mod, PROTOCOL_CLS);
+                    if (!cls || !PyCallable_Check(cls)) {
                         PyErr_Print();
                         std::cerr << "Failed to get class " << PROTOCOL_CLS << "\n";
                         Py_XDECREF(mod);
@@ -144,12 +178,12 @@ class MODULE_NAME : public Env<EnvSpec<SPEC_CLS>>{
 
                     // 5) Build arguments tuple and call the constructor
                     PyObject *args = Py_BuildValue("(i)", envid);
-                    this->env  = PyObject_CallObject(env_cls, args);
+                    PyObject *env  = PyObject_CallObject(cls, args);
                     Py_DECREF(args);
                     if (!env) {
                         PyErr_Print();
                         std::cerr << "Failed to instantiate " << PROTOCOL_CLS << "\n";
-                        Py_DECREF(env_cls);
+                        Py_DECREF(cls);
                         Py_DECREF(mod);
                         return;
                     }
@@ -163,7 +197,6 @@ class MODULE_NAME : public Env<EnvSpec<SPEC_CLS>>{
             }
             
             }
-          // runs Reset in async       
           float reward ;
           std::vector<float> obs(OBSERVATION_SPACE_DIM, 0.0);
           if (! has_class){
@@ -172,9 +205,8 @@ class MODULE_NAME : public Env<EnvSpec<SPEC_CLS>>{
                 return;
             }
             try {
-                // sub_interps::sub_interpreter::thread_scope scope(interp->interp());
                 sub_interps::sub_interpreter::thread_scope scope(interp->interp());
-                PyObject* ret = PyObject_CallMethod(this->env , (char*)"_reset_envpool", nullptr);
+                PyObject* ret = PyObject_CallMethod(env_cls, (char*)"_reset_envpool", nullptr);
                 if (!ret) {
                     PyErr_Print();
                     std::cerr << "Failed to call _reset_envpool\n";
@@ -183,7 +215,7 @@ class MODULE_NAME : public Env<EnvSpec<SPEC_CLS>>{
                 Py_DECREF(ret);
 
                 // 4) Call env._make_obs_envpool() → should be a numpy.ndarray
-                PyObject* obs_obj = PyObject_CallMethod(this->env , (char*)"_make_obs_envpool", nullptr);
+                PyObject* obs_obj = PyObject_CallMethod(env_cls, (char*)"_make_obs_envpool", nullptr);
                 if (!obs_obj) {
                     PyErr_Print();
                     std::cerr << "Failed to call _make_obs_envpool\n";
@@ -212,7 +244,7 @@ class MODULE_NAME : public Env<EnvSpec<SPEC_CLS>>{
                 // }
                 // done =  env_cls.attr("_done_envpool")().cast<bool>();
                 // reward = env_cls.attr("_reward_envpool")().cast<float>();
-                PyObject* done_obj = PyObject_CallMethod(this->env , (char*)"_done_envpool", nullptr);
+                PyObject* done_obj = PyObject_CallMethod(env_cls, (char*)"_done_envpool", nullptr);
                 if (!done_obj) {
                     PyErr_Print();
                     throw std::runtime_error("Failed to call _done_envpool");
@@ -221,7 +253,7 @@ class MODULE_NAME : public Env<EnvSpec<SPEC_CLS>>{
                 Py_DECREF(done_obj);
 
                 // 2) Call env._reward_envpool() → Python float
-                PyObject* rew_obj = PyObject_CallMethod(this->env , (char*)"_reward_envpool", nullptr);
+                PyObject* rew_obj = PyObject_CallMethod(env_cls, (char*)"_reward_envpool", nullptr);
                 if (!rew_obj) {
                     PyErr_Print();
                     throw std::runtime_error("Failed to call _reward_envpool");
@@ -241,7 +273,7 @@ class MODULE_NAME : public Env<EnvSpec<SPEC_CLS>>{
 
         };
 
-        void Step_t(float* action_data){
+        void Step_t(){
           // runs Steps in async
           // Do not call this directly
           float reward ;
@@ -252,22 +284,8 @@ class MODULE_NAME : public Env<EnvSpec<SPEC_CLS>>{
                 return;
             }
             try {
-                // sub_interps::sub_interpreter::thread_scope scope(interp->interp());
-                
                 sub_interps::sub_interpreter::thread_scope scope(interp->interp());
-                npy_intp dims[1] = { ACTION_SPACE_DIM };
-                PyObject* arg_arr = PyArray_SimpleNewFromData(
-                        /*ndim=*/1,
-                        dims,
-                        NPY_FLOAT,
-                        /*data=*/reinterpret_cast<void*>(action_data)
-                    );
-                if (!arg_arr) {
-                    PyErr_Print();
-                    std::cout<<"Could not build NumPy array"<<std::endl;
-                  }
-                PyObject* ret = PyObject_CallMethod(this->env , (char*)"_step_envpool", (char*)"O", arg_arr);
-                Py_DECREF(arg_arr);
+                PyObject* ret = PyObject_CallMethod(env_cls, (char*)"_step_envpool", nullptr);
                 if (!ret) {
                     PyErr_Print();
                     std::cerr << "Failed to call _reset_envpool\n";
@@ -276,7 +294,7 @@ class MODULE_NAME : public Env<EnvSpec<SPEC_CLS>>{
                 Py_DECREF(ret);
 
                 // 4) Call env._make_obs_envpool() → should be a numpy.ndarray
-                PyObject* obs_obj = PyObject_CallMethod(this->env , (char*)"_make_obs_envpool", nullptr);
+                PyObject* obs_obj = PyObject_CallMethod(env_cls, (char*)"_make_obs_envpool", nullptr);
                 if (!obs_obj) {
                     PyErr_Print();
                     std::cerr << "Failed to call _make_obs_envpool\n";
@@ -305,7 +323,7 @@ class MODULE_NAME : public Env<EnvSpec<SPEC_CLS>>{
                 // }
                 // done =  env_cls.attr("_done_envpool")().cast<bool>();
                 // reward = env_cls.attr("_reward_envpool")().cast<float>();
-                PyObject* done_obj = PyObject_CallMethod(this->env , (char*)"_done_envpool", nullptr);
+                PyObject* done_obj = PyObject_CallMethod(env_cls, (char*)"_done_envpool", nullptr);
                 if (!done_obj) {
                     PyErr_Print();
                     throw std::runtime_error("Failed to call _done_envpool");
@@ -314,7 +332,7 @@ class MODULE_NAME : public Env<EnvSpec<SPEC_CLS>>{
                 Py_DECREF(done_obj);
 
                 // 2) Call env._reward_envpool() → Python float
-                PyObject* rew_obj = PyObject_CallMethod(this->env , (char*)"_reward_envpool", nullptr);
+                PyObject* rew_obj = PyObject_CallMethod(env_cls, (char*)"_reward_envpool", nullptr);
                 if (!rew_obj) {
                     PyErr_Print();
                     throw std::runtime_error("Failed to call _reward_envpool");
@@ -340,15 +358,14 @@ class MODULE_NAME : public Env<EnvSpec<SPEC_CLS>>{
         }
 
         void Step(const Action& action) override {
-          float* action_data = static_cast<float*>(action["action"_].Data());
-          // std::thread t(&wrapper::MyEnv_wrap::Step_t, this);
-          //   // maybe detach, but may cause threads to pil up
-          // t.join();
-          Step_t(action_data);
+
+          std::thread t(&wrapper::MyEnv_wrap::Step_t, this);
+            // maybe detach, but may cause threads to pil up
+          t.join();
          }
      private:
-        PyObject* mod;
-        PyObject * env;
+        PyObject * mod;
+        PyObject * env_cls;
         // to ensure Reset is called for initing
         bool  done = true;
         bool has_class;
@@ -368,9 +385,9 @@ class MODULE_NAME : public Env<EnvSpec<SPEC_CLS>>{
 std::string module_name = std::string(XSTR(MODULE_NAME));
 std::string spec_name = "_" + module_name +"Spec";
 std::string pool_name = "_" + module_name + "Pool";
-// std::unique_ptr<sub_interps::initialize> wrapper::MODULE_NAME::interp_initializer = nullptr;
-// std::unique_ptr<sub_interps::enable_threads_scope> wrapper::MODULE_NAME::thread_scope_enabler = nullptr;
-// std::vector<std::shared_ptr<sub_interps::sub_interpreter>>  wrapper::MODULE_NAME::sub_interps_ = std::vector<std::shared_ptr<sub_interps::sub_interpreter>>();
+std::unique_ptr<sub_interps::initialize> wrapper::MODULE_NAME::interp_initializer = nullptr;
+std::unique_ptr<sub_interps::enable_threads_scope> wrapper::MODULE_NAME::thread_scope_enabler = nullptr;
+std::vector<std::shared_ptr<sub_interps::sub_interpreter>>  wrapper::MODULE_NAME::sub_interps_ = std::vector<std::shared_ptr<sub_interps::sub_interpreter>>();
 
 PYBIND11_MODULE(MODULE_NAME, m) {
   REGISTER(m, PyEnvSpec<EnvSpec<wrapper::SPEC_CLS>>, PyEnvPool<AsyncEnvPool<wrapper::MODULE_NAME>>, spec_name.c_str(), pool_name.c_str())

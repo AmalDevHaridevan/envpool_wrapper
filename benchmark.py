@@ -35,7 +35,7 @@ def run_envpool(num_envs, total_step, async_):
     t = time.time()
     for _ in tqdm.trange(total_step):
         info = env.recv()[-1]
-        env.step(action, info["env_id"])
+        env.send(action, info["env_id"])
     duration = time.time() - t
     fps = total_step * num_envs / duration 
     print(f"Duration = {duration:.2f}s")
@@ -49,6 +49,10 @@ if __name__ == "__main__":
     parser.add_argument("--async_env", help="async mode or not", action="store_true", required=True)
     parser.add_argument("--max_iters", help="maximum number of steps to test", type=int, required=True)
     args = parser.parse_args()
+    task_id="MyEnv_wrap"
+    kwargs = {}
+    env = envpool.make_gym(task_id, num_envs=2)
+    breakpoint()
     gym_fps = run_gym(args.n_envs, args.max_iters, args.async_env)
     envpool_fps = run_envpool(args.n_envs, args.max_iters, args.async_env)
     print("~"*50)
